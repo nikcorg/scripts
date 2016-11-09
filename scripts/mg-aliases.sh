@@ -8,3 +8,23 @@ alias start-userapp-ruby="start-userapp web=1,sidekiq=1,shoryuken=1"
 alias start-userapp="nf-start Procfile.userapp"
 alias start-utils="nf-start Procfile.utils"
 alias start-graph="nf-start Procfile.platform graph=1"
+
+read -r -d '' MIGRATIONTEMPLATE <<'EOT'
+exports.up = knex => knex.raw(`
+`);
+
+exports.down = knex => knex.raw(`
+`);
+EOT
+
+function migration() {
+  if [ "$1" = "" ]; then
+    echo "Filename required"
+    return 1
+  fi
+  local filename="$(date +%Y%m%d%H%M%S)_$1"
+  echo "$MIGRATIONTEMPLATE" > $filename
+  echo "Created $filename"
+  return 0
+}
+
