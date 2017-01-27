@@ -17,6 +17,8 @@ _find_script() {
 
   COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
 
+  __ltrim_colon_completions "$cur"
+
   return 0
 }
 
