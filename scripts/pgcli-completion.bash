@@ -16,3 +16,5 @@ _find_database() {
 }
 
 complete -o default -F _find_database pgcli
+complete -o default -F _find_database dropdb
+complete -o default -F _find_database psql
