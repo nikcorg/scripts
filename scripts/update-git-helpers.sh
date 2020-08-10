@@ -10,17 +10,16 @@
 
 # A space separated list of scripts to keep updated, for options see:
 # https://github.com/git/git/tree/master/contrib/completion
-SCRIPTS="git-completion.bash git-prompt.sh"
+SCRIPTS=(
+    git-completion.bash
+    git-prompt.sh
+)
 
 # Where to place the downloaded scripts
 DEST="$HOME/bin"
 
 # Where to download the scripts from
 URLSTEM="https://raw.githubusercontent.com/git/git/master/contrib/completion"
-
-# Required programs
-MD5=$(which -s md5; echo $?)
-CURL=$(which -s curl; echo $?)
 
 # Error exit codes
 ERR_DOWNLOAD_FAILED=1
@@ -38,7 +37,7 @@ QUIET=2
 usage()
 {
     cat << EOT
-Usage: $(basename $0) [-q|-qq]
+Usage: $(basename "$0") [-q|-qq]
     -q      suppress informational messages
     -qq     suppress all output
 EOT
@@ -48,7 +47,7 @@ EOT
 
 info()
 {
-    if [ $QUIET -lt 2 ];
+    if (( "$QUIET" < 2 ));
     then
         return 0
     fi
@@ -61,28 +60,25 @@ error_exit()
     local EXITCODE=$1
     shift
 
-    if [ $QUIET -gt 0 ];
+    if (( "$QUIET" > 0 ));
     then
         echo "$@" >&2
     fi
 
-    exit $EXITCODE
+    exit "$EXITCODE"
 }
 
-if [ ! -z "$1" -a "$1" = "-qq" ];
-then
-    QUIET=0
-elif [ ! -z "$1" -a "$1" = "-q" ];
-then
-    QUIET=1
-elif [ ! -z "$1" ];
-then
-    usage $ERR_INVALID_OPTION "Invalid option: $1"
+if (( $# > 0 )); then
+    case "$1" in
+        -qq) QUIET=0 ;;
+        -q) QUIET=1 ;;
+        *) usage $ERR_INVALID_OPTION "Invalid option: $1" ;;
+    esac
 fi
 
 check_home()
 {
-    if [ "x$HOME" = "x" ];
+    if [[ "$HOME" == "" ]];
     then
         error_exit $ERR_HOME_PATH_UNKNOWN "Unable to find user home."
     fi
@@ -92,7 +88,7 @@ check_home()
 
 check_dest()
 {
-    if [ "x$DEST" = "x" -o ! -d "$DEST" ];
+    if [[ "$DEST" == "" ]] || [[ ! -d "$DEST" ]];
     then
         error_exit $ERR_DEST_DIR_MISSING "Destination directory not found or not a directory: $DEST"
     fi
@@ -102,12 +98,12 @@ check_dest()
 
 check_tools()
 {
-    if [ $MD5 -ne 0 ];
+    if ! which -s md5
     then
         error_exit $ERR_MISSING_TOOL "md5 not found"
     fi
 
-    if [ $CURL -ne 0 ];
+    if ! which -s curl
     then
         error_exit $ERR_MISSING_TOOL "curl not found"
     fi
@@ -118,16 +114,12 @@ curl_fetch()
     local URL="$1"
     local DEST="$2"
 
-    curl -s "$URL" 2>/dev/null > "$DEST"
-
-    local CURLEXIT=$?
-
-    if [ "x$CURLEXIT" != "x0" -o ! -f "$TMPFILE" ];
+    if ! curl -s "$URL" 2>/dev/null > "$DEST"
     then
-        error_exit $ERR_DOWNLOAD_FAILED "Failed ($CURLEXIT) to fetch $URL"
+        error_exit $ERR_DOWNLOAD_FAILED "Failed to fetch $URL"
     fi
 
-    return $CURLEXIT
+    return 0
 }
 
 checksums_match()
@@ -135,15 +127,12 @@ checksums_match()
     local FILEA="$1"
     local FILEB="$2"
 
-    if [ ! -f "$FILEA" -o ! -f "$FILEB" ];
+    if [[ ! -f "$FILEA" ]] || [[ ! -f "$FILEB" ]];
     then
         return 1
     fi
 
-    local CSA=$(md5 -q "$FILEA")
-    local CSB=$(md5 -q "$FILEB")
-
-    if [ "$CSA" != "$CSB" ];
+    if [[ "$(md5 -q "$FILEA")" != "$(md5 -q "$FILEB")" ]];
     then
         return 1
     fi
@@ -157,7 +146,7 @@ install_script()
     local TO="$2"
     local BAK="$TO.prev"
 
-    if [ -f "$TO" ];
+    if [[ -f "$TO" ]];
     then
         cp "$TO" "$BAK"
     fi
@@ -171,7 +160,7 @@ update_or_install_script()
 {
     local SCRIPT="$1"
     local SRC="$URLSTEM/$SCRIPT"
-    local TMPFILE="/tmp/$SCRIPT"
+    local TMPFILE="$(mktemp -t "$SCRIPT")"
     local DESTFILE="$DEST/$SCRIPT"
 
     curl_fetch "$SRC" "$TMPFILE"
@@ -193,7 +182,7 @@ check_home
 check_dest
 check_tools
 
-for SCRIPT in $SCRIPTS; do update_or_install_script "$SCRIPT"; done
+for SCRIPT in ${SCRIPTS[*]}; do update_or_install_script "$SCRIPT"; done
 
 info "All done"
 exit 0

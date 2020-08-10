@@ -1,0 +1,49 @@
+# shellcheck shell=bash
+alias ..="cd .."
+alias ...="cd ../.."
+alias ....="cd ../../.."
+
+alias ls='ls -AFGh'
+
+alias gcm='[[ -f "$(git rev-parse --git-dir)/refs/heads/main" ]] && git checkout main || git checkout master'
+alias gco='git checkout'
+alias crontab='VIM_CRONTAB=true crontab'
+alias gti='git'
+alias gut='git'
+
+alias strip='/usr/local/Cellar/imagemagick@6/6.9.9-50/bin/mogrify -strip'
+
+alias ost='ticker --config ~/.ost.yaml'
+alias aot='ticker --config ~/.aot.yaml'
+
+[[ -s "$HOME/bin/mg-aliases.sh" ]] && source "$HOME/bin/mg-aliases.sh"
+
+alias weeknum='date +%U'
+
+topall() {
+  set -- top "$(for pid in $(pgrep "$1"); do echo "-pid $pid"; done | xargs)"
+  eval "$*"
+}
+
+portpid() {
+  lsof -i ":$1"
+}
+
+canonicalise() {
+  if [[ "$(uname)" == "Linux" ]]; then
+    readlink -f "$1"
+    return $?
+  fi
+
+	pushd . >/dev/null 2>&1
+	d="$1"
+
+	while [[ -L "$d" ]]; do
+		next="$(readlink "$d")"
+		d="$(basename "$next")"
+		cd "$(dirname "$next")" || return
+	done
+
+	echo "$(pwd)/$d"
+	popd >/dev/null 2>&1 || return
+}

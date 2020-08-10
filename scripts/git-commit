@@ -1,0 +1,292 @@
+#!/usr/bin/env bash
+
+## A utility for following the Conventional Commits style
+##
+## usage: __USAGE__
+##
+## Options
+## -h              this help
+## -a              commit all
+## -s <scope>      set the scope for the commit
+## -r              reuse the previous scope
+## -i              interactive mode (combine with -r)
+## -b <b>          how many commits to look back to find a previous commit with
+##+                a subject (default: 10)
+##
+## == Basic usage ==
+##
+## Invoke as any other script, or symlink named as one of the supported commit
+##+types to save some typing.
+##
+## In order to make including the script in a git alias easier, the commit type
+##+can be the first argument.
+##
+## To pass extra arguments to git, separate them from script arguments using a
+##+double-dash (--), when not passing a commit message. Anything following a
+##+commit message will be passed on to git.
+##
+## == Commit validation ==
+##
+## To install a commit message validation git hook, run __PROG__ install.
+
+set -eu -o pipefail
+
+# config
+supported_types="chore|docs|feat|fix|refactor|style|test"
+max_subject_line_len=72
+
+# runtime config
+prog_name="$(basename "$0")"
+scope_lookback="${scope_lookback:-10}"
+interactive=false
+reuse_scope=false
+commit_all=false
+commit_type=""
+commit_scope=""
+commit_message=""
+
+usage() {
+  local exit_code="${1:-0}" usage
+
+  if [[ "$prog_name" =~ $supported_types ]]; then
+    usage="$(printf "__PROG__ -h | [-a] [-r [-b <n>] | -s <scope>] [<message>] [--] [git [args ...]]")"
+  else
+    usage="$(printf "__PROG__ -h | [-a] [-r [-b <n>] | -s <scope>] <%s> [<message>] [--] [git [args ...]]" "$supported_types")"
+  fi
+
+  # show extended help on non-error exits
+  if (( exit_code == 0 )); then
+    echo -e "$(grep -E "^##" "$0" | sed -E -e "s/^##[+ ]?//" -e "s/__USAGE__/$usage/" -e "s/__PROG__/$prog_name/")" >&2
+  else
+    printf "usage: %s\n" "$usage" | sed -E -e "s/__PROG__/$prog_name/" >&2
+  fi
+
+  exit "$exit_code"
+}
+
+previous_scope() {
+  local prev_subject
+  local prev_scope
+
+  while read -r prev_subject; do
+    prev_scope="$(sed -E 's/.*\(([^)]*)\):.*/\1/' <<<"$prev_subject")"
+
+    # no scope was present if they match
+    if [[ "$prev_subject" != "$prev_scope" ]]; then
+      break
+    fi
+
+    prev_subject=""
+  done < <(git log -n "$scope_lookback" --pretty=%s)
+
+  if [[ -z "$prev_subject" ]]; then
+    echo "error: no reusable scope found (scope_lookback: $scope_lookback)" >&2
+    return 1
+  fi
+
+  echo "$prev_scope"
+}
+
+previous_scope_menu() {
+  local prev_subject
+  local prev_scope
+  local tmpfile="$(mktemp)"
+
+  while read -r prev_subject; do
+    prev_scope="$(sed -E 's/.*\(([^)]*)\):.*/\1/' <<<"$prev_subject")"
+
+    # no scope was present if they match
+    if [[ "$prev_subject" == "$prev_scope" ]]; then
+      continue
+    fi
+
+    echo "$prev_scope" >> "$tmpfile"
+
+    prev_scope=""
+    prev_subject=""
+  done < <(git log -n "$scope_lookback" --pretty=%s)
+
+  local prev_scopes=()
+  while read -r prev_scope; do
+    prev_scopes+=( "$prev_scope" )
+  done < <(sort "$tmpfile" | uniq)
+
+  if (( "${#prev_scopes[@]}" == 0 )); then
+    echo "error: no reusable scopes found (scope_lookback: $scope_lookback)" >&2
+    return 1
+  elif (( "${#prev_scopes[@]}" == 1 )); then
+    echo "info: only one scope found, skipping interactive menu (scope_lookback: $scope_lookback)" >&2
+  else
+    PS3="select scope or hit ^C to quit: "
+    select prev_scope in "${prev_scopes[@]}"; do
+      if [[ "$prev_scope" == "" ]]; then continue; fi
+      break
+    done
+  fi
+
+  echo "$prev_scope"
+}
+
+install_commit_msg_hook() {
+  # shellcheck disable=SC2155
+  local abs_path="$(cd "$(dirname "$0")"; pwd)/$(basename "$0")"
+
+  cd "$(git rev-parse --git-dir)"/hooks
+
+  if [[ -a "commit-msg" ]]; then
+    echo "error: a commit-msg hook already installed. remove existing hook and try again." >&2
+    return 1
+  fi
+
+  ln -s "$abs_path" commit-msg
+}
+
+validate_commit_msg() {
+  local commit_type commit_msg scope
+
+  commit_type="$(cut -d ":" -f 1 <<<"$1")"
+  commit_msg="$(cut -d ":" -f 2 <<<"$1")"
+  scope="$(sed -E 's/\w+\(([^:])\):/\1/' <<<"$commit_type")"
+
+  # drop scope from commit type
+  if [[ "$commit_type" != "$scope" ]]; then
+    commit_type="$(sed -E 's/(\w+)\([^:]\):/\1/' <<<"$commit_type")"
+  fi
+
+  if (( ${#commit_msg} == 0 )); then
+    echo "error: empty subject line" >&2
+    return 1
+  fi
+
+  if (( ${#1} > max_subject_line_len )); then
+    echo "error: subject line exceeds max length" >&2
+    return 1
+  fi
+
+  if ! [[ "$commit_type" =~ $supported_types ]]; then
+    echo "error: unsupported commit type" >&2
+    return 1
+  fi
+}
+
+# peek at the first argument, in case it's a commit type
+if (( $# > 0 )) && [[ "$1" =~ $supported_types ]]; then
+  commit_type="${1:-}"
+  shift
+fi
+
+# options
+while getopts ":ab:hrs:i" arg "$@"; do
+  case "$arg" in
+    a) commit_all=true ;;
+    h) usage ;;
+    s) commit_scope="$OPTARG" ;;
+    r) reuse_scope=true ;;
+    b) scope_lookback="$OPTARG" ;;
+    i) interactive=true ;;
+    *)  printf "error: unknown option: -%s\n" "$OPTARG" >&2
+        usage 1
+        ;;
+  esac
+done
+
+shift $(( OPTIND - 1 ))
+
+if [[ "$(git rev-parse --is-inside-work-tree 2>&1)" != "true" ]]; then
+  echo "error: not a git repository" >&2
+  exit 1
+fi
+
+# if the first argument is a file, that's the commit-msg hook asking us to validate
+if (( $# > 0 )) && [[ -f "$1" ]]; then
+  if validate_commit_msg "$(head -1 "$1")"; then
+    exit 0
+  fi
+
+  printf "use \"git commit -eF %s\" to edit your commit message\n" "$1" >&2
+
+  if ! git config alias.recommit; then
+    printf "tip: use an alias for a quick redo: git config alias.recommit 'commit -eF %s'\n" "$1" >&2
+  fi
+
+  exit 1
+fi
+
+# if the first argument is "install" attempt to install a commit-msg hook
+if [[ "${1:-}" == "install" ]] && install_commit_msg_hook; then
+  exit 0
+fi
+
+# sanity check for work to be done
+if ! $commit_all && [[ "$(git diff --cached)" == "" ]]; then
+  echo "error: nothing to commit" >&2
+  exit 1
+fi
+
+if $reuse_scope && ! $interactive; then
+  commit_scope="$(previous_scope)"
+elif $reuse_scope && $interactive; then
+  commit_scope="$(previous_scope_menu)"
+fi
+
+# resolve commit type, if it's still unset
+if [[ -z "$commit_type" ]] && [[ "$prog_name" =~ $supported_types ]]; then
+  commit_type="$prog_name"
+elif [[ -z "$commit_type" ]] && (( $# > 0 )) && [[ "$1" =~ $supported_types ]]; then
+  commit_type="${1:-}"
+  shift
+fi
+
+# validate commit type
+if [[ -z "$commit_type" ]]; then
+  echo "error: expected a commit type" >&2
+  usage 1
+elif ! [[ "$commit_type" =~ $supported_types ]]; then
+  printf "error: unknown commit type: %s\n" "$commit_type" >&2
+  usage 1
+fi
+
+# check for message
+if (( $# > 0 )) && [[ "${1:0:1}" != "-" ]]; then
+  commit_message="${1:-}"
+  shift
+fi
+
+# collect any remaining arguments
+extra_args=()
+if (( $# > 0 )); then
+  if [[ "$1" == "--" ]]; then
+    shift
+  fi
+
+  while (( $# > 0 )); do
+    extra_args+=("$1")
+    shift
+  done
+fi
+
+# assemble prefix
+prefix="$commit_type"
+if [[ "$commit_scope" != "" ]]; then
+  prefix="${prefix}($commit_scope)"
+fi
+
+# assemble command line
+set -- git commit
+
+if $commit_all; then
+  set -- "$@" -a
+fi
+
+if (( "${#extra_args[@]:-0}" > 0 )); then
+  set -- "$@" "${extra_args[@]}"
+fi
+
+if [[ -n "$commit_message" ]]; then
+  set -- "$@" -m "${prefix}: $commit_message"
+else
+  set -- "$@" -v -e -m "${prefix}: "
+fi
+
+# hand over to git
+exec "$@"
