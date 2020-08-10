@@ -1,0 +1,45 @@
+alias ..="cd .."
+alias ...="cd ../.."
+alias ....="cd ../../.."
+
+alias ls='ls -AFGh'
+
+alias gcm='git checkout master 2>/dev/null || git checkout main 2>/dev/null'
+alias gco='git checkout'
+alias crontab='VIM_CRONTAB=true crontab'
+alias gti='git'
+alias gut='git'
+
+alias strip='/usr/local/Cellar/imagemagick@6/6.9.9-50/bin/mogrify -strip'
+
+alias ost='ticker --config ~/.ost.yaml'
+alias aot='ticker --config ~/.aot.yaml'
+
+alias wigglewatch='while true; do
+  lastcheck="$(date +%s)"
+  printf "checking %d URLs at $(date)\n" "$(sed "/^\s*$/d" ~/tmp/wiggle-products.txt|wc -l)"
+  for u in $(cat ~/tmp/wiggle-products.txt); do
+    if curl "$u" 2>/dev/null | grep -qs "this product is no longer available"; then
+      :
+    else
+      open "$u"
+    fi
+  done
+  while true; do
+    sleep 600
+    ts="$(date +%s)"
+    if (( ts - lastcheck > 12 * 3600 )); then
+      break
+    fi
+  done
+done'
+
+[[ -s "$HOME/bin/mg-aliases.sh" ]] && source "$HOME/bin/mg-aliases.sh"
+
+function topall() {
+  top $(for pid in $(pgrep "$1"); do echo "-pid $pid"; done | xargs)
+}
+
+function portpid() {
+  lsof -i ":$1"
+}
