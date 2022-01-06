@@ -6,6 +6,7 @@ set -eu
 
 # Error outcomes
 EX_UNAVAILABLE=69
+EX_USAGE=64
 
 # Initial values
 PROGRAM_NAME=$(basename $0)
@@ -13,7 +14,7 @@ SERVE_FILE=""
 CONTENT_LENGTH="0"
 CONTENT_TYPE=""
 CONTENT_ENCODING=""
-DUMP_CONFIG="no"
+DUMP_CONFIG=false
 RESP_FILE=$(mktemp -t $PROGRAM_NAME)
 FALLBACK_CONTENT_TYPE="application/octet-stream"
 FALLBACK_ENCODING="utf-8"
@@ -47,47 +48,59 @@ usage() {
 	EOUSAGE
 }
 
-PARSE_OWN_ARGS=0
-if [ $# -eq 0 ]; then
+if (( $# == 0 )); then
   usage
   exit 1
 else
-  while [ $# -gt 0 ]; do
-    case $1 in
-      --)
-        shift
-        NETCAT_FLAGS="$@"
-        break
+  while getopts ":hde:m:p:s:" flag "$@"; do
+    case "$flag" in
+      d)
+        DUMP_CONFIG=true
         ;;
-      -d)
-        DUMP_CONFIG="yes"
+      e)
+        CONTENT_ENCODING="$OPTARG"
         ;;
-      -e)
-        shift
-        CONTENT_ENCODING="$1"
-        ;;
-      -h)
+      h)
         usage
         exit 0
         ;;
-      -m)
-        shift
-        CONTENT_TYPE="$1"
+      m)
+        CONTENT_TYPE="$OPTARG"
         ;;
-      -p)
-        shift
-        PORT="$1"
+      p)
+        PORT="$OPTARG"
         ;;
-      -s)
-        shift
-        RESPONSE_STATUS="$1"
+      s)
+        RESPONSE_STATUS="$OPTARG"
         ;;
-      *)
-        SERVE_FILE="$1"
+      :)
+        >&2 printf "option requires an argument: -%s\n" "$OPTARG"
+        >&2 printf "use -h for help\n"
+        exit $EX_USAGE
+        ;;
+      \?)
+        >&2 printf "unknown option: -%s\n" "$OPTARG"
+        >&2 printf "use -h for help\n"
+        usage
+        exit $EX_USAGE
         ;;
     esac
-    shift
   done
+  shift $((OPTIND-1))
+
+  SERVE_FILE="${1:-}"
+  shift
+
+  echo "set file $SERVE_FILE"
+
+  if [[ "${1:-}" == "--" ]]; then
+    shift
+  fi
+
+  NETCAT_FLAGS="$NETCAT_FLAGS $@"
+  shift $#
+
+  echo "set flags: $NETCAT_FLAGS"
 fi
 
 serve-nc() {
@@ -108,13 +121,13 @@ generate-resp() {
 
 	EORESP
 
-  if [ ! -z "$SERVE_FILE" ]; then
+  if [[ ! -z "$SERVE_FILE" ]]; then
     cat "$SERVE_FILE" >> $RESP_FILE
   fi
 }
 
 dump-config() {
-  if [ $DUMP_CONFIG = "no" ]; then
+  if ! $DUMP_CONFIG; then
     return
   fi
 
@@ -146,11 +159,11 @@ probe-content-type() {
   local ct=$(cut -d ";" -f 1 <<<"$probe")
   local ce=$(cut -d "=" -f 2 <<<"$probe")
 
-  if [ -z "$CONTENT_TYPE" ]; then
+  if [[ -z "$CONTENT_TYPE" ]]; then
     CONTENT_TYPE="$ct"
   fi
 
-  if [ -z "$CONTENT_ENCODING" ]; then
+  if [[ -z "$CONTENT_ENCODING" ]]; then
     CONTENT_ENCODING="$ce"
   fi
 }
@@ -160,15 +173,15 @@ check-config() {
   : ${RESPONSE_STATUS:="200 OK"}
   : ${PORT:="8080"}
 
-  if [ -z "$SERVE_FILE" ]; then
+  if [[ -z "$SERVE_FILE" ]]; then
     return
-  elif [ ! -f "$SERVE_FILE" ]; then
+  elif ! [[ -f "$SERVE_FILE" ]]; then
     printf "$(cr)%s: $(ch)%s$(cr): file not found\n" "$PROGRAM_NAME" "$SERVE_FILE" >&2
     exit $EX_UNAVAILABLE
   fi
 
   # Auto-detect content-type when not provided
-  if [ -z "$CONTENT_TYPE" ] || [ -z "$CONTENT_ENCODING" ]; then
+  if [[ -z "$CONTENT_TYPE" ]] || [[ -z "$CONTENT_ENCODING" ]]; then
     probe-content-type
   fi
 

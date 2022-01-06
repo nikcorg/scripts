@@ -43,3 +43,5 @@ function topall() {
 function portpid() {
   lsof -i ":$1"
 }
+
+alias weeknum='date +%U'

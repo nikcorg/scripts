@@ -16,31 +16,31 @@ p() {
 
   # find a match in yggdrasil
   if [[ ! -d "$dest" ]]; then
-    dest=$(find "$phome/yggdrasil/apps" -maxdepth 1 -mindepth 1 -type d -name "$1" -print -quit)
+    dest=$(find "$phome/yggdrasil/lib" -maxdepth 1 -mindepth 1 -type d -name "$1" -print -quit)
   fi
 
   # find a partial match in projects
-  if [ ! -d "$dest" ]; then
+  if [[ ! -d "$dest" ]]; then
     dest=$(find "$phome" -maxdepth 1 -mindepth 1 -type d -name "$1*" -print -quit)
   fi
 
   # find a partial match in projects
-  if [ ! -d "$dest" ]; then
+  if [[ ! -d "$dest" ]]; then
     dest=$(find "$phome" -maxdepth 1 -mindepth 1 -type d -name "*$1*" -print -quit)
   fi
 
   # find a partial match in yggdrasil
-  if [ ! -d "$dest" ]; then
+  if [[ ! -d "$dest" ]]; then
     dest=$(find "$phome/yggdrasil/lib" -maxdepth 1 -mindepth 1 -type d -name "$1*" -print -quit)
   fi
 
   # find a partial match in yggdrasil
-  if [ ! -d "$dest" ]; then
+  if [[ ! -d "$dest" ]]; then
     dest=$(find "$phome/yggdrasil/lib" -maxdepth 1 -mindepth 1 -type d -name "*$1*" -print -quit)
   fi
 
   # still no match? well, shucks...
-  if [ ! -d "$dest" ]; then
+  if [[ ! -d "$dest" ]]; then
     echo "unrecognised: $1" >&2
     return 1
   fi
